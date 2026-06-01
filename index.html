@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>E-Patrol Security - Guard Patrol System</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .nfc-pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+      }
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 20px rgba(59, 130, 246, 0);
+      }
+      100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+      }
+    }
+    .spin-active {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    /* Hide scrollbars for cleaner horizontal tabs */
+    .scrollbar-none::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-none {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    
+    @media print {
+      body {
+        background-color: #fff !important;
+        color: #000 !important;
+        font-size: 11pt !important;
+      }
+      header, footer, nav, button, .no-print, #toastContainer, #loadingOverlay, .api-modal {
+        display: none !important;
+      }
+      main {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+      .print-box {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .print-header {
+        display: block !important;
+        margin-bottom: 20px;
+        border-bottom: 3px double #000;
+        padding-bottom: 10px;
+      }
+      .print-signatures {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+        margin-top: 40px;
+        page-break-inside: avoid;
+      }
+      .table-print {
+        border: 1px solid #000 !important;
+        border-collapse: collapse !important;
+        width: 100% !important;
+      }
+      .table-print th {
+        background-color: #f2f2f2 !important;
+        color: #000 !important;
+        border: 1px solid #000 !important;
+        font-weight: bold !important;
+        padding: 6px !important;
+        font-size: 10pt !important;
+      }
+      .table-print td {
+        border: 1px solid #000 !important;
+        padding: 6px !important;
+        font-size: 9pt !important;
+      }
+      tr {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col antialiased">
+
+  <!-- TOP HEADER BANNER -->
+  <header class="bg-blue-900 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-blue-800 p-2 rounded-lg">
+          <i data-lucide="shield-alert" class="w-6 h-6 text-yellow-400"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold leading-none tracking-tight">E-Patrol Security</h1>
+          <span class="text-xs text-blue-200">Guard Patrol Monitoring System</span>
+        </div>
+      </div>
+      
+      <!-- USER INFO & HEADER ACTION -->
+      <div id="userInfo" class="hidden flex items-center space-x-3">
+        <button onclick="manualSync()" id="syncHeaderBtn" class="flex items-center space-x-1.5 bg-blue-800 hover:bg-blue-700 active:bg-blue-950 text-white text-xs px-3 py-2 rounded-xl transition-all border border-blue-700 font-semibold shadow-sm" title="Ambil data terbaru dari Spreadsheet">
+          <i data-lucide="refresh-cw" class="w-4 h-4" id="syncHeaderIcon"></i>
+          <span class="hidden md:inline">Sinkronkan Data</span>
+        </button>
+
+        <div class="text-right">
+          <p id="userDisplayName" class="text-sm font-semibold leading-tight">-</p>
+          <span id="userDisplayRole" class="text-xs bg-blue-800 text-blue-200 px-2 py-0.5 rounded-full">-</span>
+        </div>
+        <button onclick="logout()" class="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-all shadow-sm" title="Keluar">
+          <i data-lucide="log-out" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-grow max-w-6xl w-full mx-auto p-4 md:py-6">
+    
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-50 space-y-2 pointer-events-none max-w-sm w-full"></div>
+
+    <!-- LOADING OVERLAY -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-white transition-opacity duration-300 hidden">
+      <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p id="loadingMessage" class="text-lg font-medium text-slate-100">Sedang memuat data...</p>
+    </div>
+
+    <!-- API CONFIGURATION MODAL (FOR STANDALONE GITHUB PAGES) -->
+    <div id="apiConfigModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden api-modal">
+      <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
+        <div class="p-6 bg-blue-900 text-white flex items-center space-x-3">
+          <div class="bg-blue-800 p-2 rounded-xl text-yellow-400">
+            <i data-lucide="settings" class="w-6 h-6 animate-spin"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-lg">Konfigurasi API Google</h3>
+            <p class="text-xs text-blue-200">Hubungkan halaman mandiri ke Google Sheet Anda</p>
+          </div>
+        </div>
+        <div class="p-6 space-y-4">
+          <p class="text-sm text-slate-600">
+            Aplikasi ini sedang berjalan mandiri di luar Google IFrame (NFC Aktif!). Agar data tersinkronisasi, masukkan <strong>URL Web App</strong> Google Apps Script Anda.
+          </p>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">URL Web App Google (Harus berakhiran /exec)</label>
+            <input type="text" id="configApiUrlInput" placeholder="https://script.google.com/macros/s/.../exec" class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+            <p id="configApiUrlError" class="text-xs text-red-600 mt-1 hidden font-semibold"></p>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start space-x-2">
+            <i data-lucide="help-circle" class="w-5 h-5 shrink-0 mt-0.5 text-amber-600"></i>
+            <div>
+              <span class="font-bold">PENTING:</span> Jangan masukkan URL editor skrip atau URL Spreadsheet. URL yang benar diperoleh saat Anda melakukan <strong>Deploy > New Deployment</strong> dengan akses <strong>Anyone</strong>.
+            </div>
+          </div>
+          <div class="flex space-x-2 pt-2">
+            <button onclick="saveApiConfiguration()" class="flex-grow bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/10">
+              Simpan Konfigurasi
+            </button>
+            <button id="closeApiModalBtn" onclick="toggleApiModal(false)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-3 rounded-xl transition-all hidden">
+              Batal
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETUP DATABASE BANNER -->
+    <div id="setupBanner" class="hidden mb-6 p-4 bg-yellow-50 border border-yellow-300 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 no-print">
+      <div class="flex items-start space-x-3">
+        <i data-lucide="database" class="w-6 h-6 text-yellow-600 shrink-0 mt-0.5"></i>
+        <div>
+          <h3 class="font-bold text-yellow-800">Inisialisasi Sistem Baru</h3>
+          <p class="text-sm text-yellow-700">Database Google Spreadsheet belum terpasang atau perlu diperbarui. Klik tombol untuk mengonfigurasi otomatis.</p>
+        </div>
+      </div>
+      <button onclick="handleSetupDatabase()" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center space-x-2 shrink-0 transition shadow">
+        <i data-lucide="play-circle" class="w-5 h-5"></i>
+        <span>Jalankan Setup</span>
+      </button>
+    </div>
+
+    <!-- ================== 1. LOGIN SCREEN ================== -->
+    <section id="loginSection" class="max-w-md mx-auto my-12 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden no-print">
+      <div class="p-8 text-center bg-gradient-to-b from-blue-900 to-blue-950 text-white">
+        <div class="inline-block bg-white/10 p-4 rounded-full mb-3">
+          <i data-lucide="shield" class="w-12 h-12 text-yellow-400"></i>
+        </div>
+        <h2 class="text-2xl font-bold">Masuk Aplikasi</h2>
+        <p class="text-slate-300 text-sm mt-1">Silakan masukkan ID Petugas dan PIN Keamanan Anda</p>
+      </div>
+      
+      <form onsubmit="handleLogin(event)" class="p-8 space-y-6">
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-2">ID Petugas / Admin / Operator</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <i data-lucide="user" class="w-5 h-5"></i>
+            </span>
+            <input type="text" id="loginId" required placeholder="Contoh: admin, OP01, atau P001" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">Uji Coba Operator: ID <span class="font-bold">OP01</span>, PIN <span class="font-bold">3333</span></p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-2">PIN Keamanan (4 Digit)</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <i data-lucide="key-round" class="w-5 h-5"></i>
+            </span>
+            <input type="password" id="loginPin" required maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl tracking-widest text-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+          </div>
+        </div>
+
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg hover:shadow-blue-500/20 flex items-center justify-center space-x-2">
+          <span>Sign In</span>
+          <i data-lucide="arrow-right" class="w-5 h-5"></i>
+        </button>
+      </form>
+    </section>
+
+    <!-- ================== 2. OFFICER SCREEN (PATROL TAPPING) ================== -->
+    <section id="officerSection" class="hidden space-y-6 no-print">
+      
+      <!-- Welcome & Info Card -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-gradient-to-br from-blue-700 to-blue-900 text-white p-6 rounded-2xl shadow-md flex items-center space-x-4">
+          <div class="bg-white/10 p-3 rounded-xl">
+            <i data-lucide="clock" class="w-8 h-8 text-yellow-400"></i>
+          </div>
+          <div>
+            <p class="text-blue-200 text-xs font-semibold tracking-wider uppercase">Jadwal Shift Aktif</p>
+            <h4 id="activeShiftName" class="text-lg font-bold">Mencari Jadwal...</h4>
+            <p id="activeShiftHours" class="text-sm text-blue-100">-</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
+          <div class="bg-green-100 p-3 rounded-xl text-green-600">
+            <i data-lucide="map-pin" class="w-8 h-8"></i>
+          </div>
+          <div>
+            <p class="text-slate-400 text-xs font-semibold tracking-wider uppercase">Titik Checkpoint Terdata</p>
+            <h4 id="checkpointCount" class="text-2xl font-black">0</h4>
+            <p class="text-xs text-slate-500">Siap dipatroli menggunakan RFID</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
+          <div class="bg-blue-100 p-3 rounded-xl text-blue-600">
+            <i data-lucide="history" class="w-8 h-8"></i>
+          </div>
+          <div>
+            <p class="text-slate-400 text-xs font-semibold tracking-wider uppercase">Total Tap Hari Ini</p>
+            <h4 id="officerTodayTaps" class="text-2xl font-black">0</h4>
+            <p class="text-xs text-slate-500">Kehadiran titik patroli terjaga</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- NFC Patrol Scanner Dashboard -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-bold flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 bg-blue-600 rounded-full animate-ping"></span>
+              <span>Scanning RFID/NFC Aktif</span>
+            </h3>
+            <p class="text-xs text-slate-500">Dekatkan bagian belakang HP Android Anda pada kartu RFID / Tag NFC di lokasi</p>
+          </div>
+          <div id="nfcSupportBadge" class="self-start text-xs px-3 py-1.5 rounded-full flex items-center space-x-1">
+            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+            <span id="nfcSupportText">Mengecek Dukungan NFC...</span>
+          </div>
+        </div>
+
+        <div class="p-8 flex flex-col items-center justify-center text-center">
+          <div id="nfcScanArea" class="w-48 h-48 bg-blue-50 text-blue-600 rounded-full flex flex-col items-center justify-center cursor-pointer nfc-pulse hover:bg-blue-100 transition duration-300 relative mb-6" onclick="triggerWebNFCScan('PATROL')">
+            <i data-lucide="nfc" class="w-16 h-16 mb-2"></i>
+            <span class="text-xs font-bold uppercase tracking-wider">Tap Kartu RFID</span>
+            <div class="absolute inset-2 border border-blue-300 border-dashed rounded-full pointer-events-none"></div>
+          </div>
+
+          <div class="max-w-md w-full">
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4">
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide text-left mb-1.5">Catatan Tambahan (Opsional)</label>
+              <textarea id="patrolNotes" rows="2" placeholder="Tulis catatan jika ada temuan (misal: 'Pintu gerbang aman locked', 'Lampu padam', dll.)" class="w-full text-sm bg-white border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all"></textarea>
+            </div>
+
+            <!-- MANUAL INPUT -->
+            <div class="border-t border-slate-100 pt-4 mt-2">
+              <button onclick="toggleManualInput('officerManualContainer')" class="text-xs text-blue-600 hover:text-blue-800 font-semibold underline flex items-center justify-center mx-auto space-x-1">
+                <i data-lucide="keyboard" class="w-4 h-4"></i>
+                <span>Gunakan Input Manual (Uji Coba / Alternatif)</span>
+              </button>
+              
+              <div id="officerManualContainer" class="hidden mt-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Ketik / Paste UID RFID Tag</label>
+                <div class="flex space-x-2">
+                  <input type="text" id="manualUid" placeholder="Contoh: 04:a1:b2:c3:d4:e5:f6" class="flex-grow text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+                  <button onclick="submitManualPatrol('manualUid', 'patrolNotes')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-all shadow hover:shadow-blue-500/10">Kirim</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Riwayat Terkini Petugas Ini -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 class="text-lg font-bold flex items-center space-x-2">
+            <i data-lucide="history" class="w-5 h-5 text-slate-500"></i>
+            <span>Aktivitas Patroli Terkini Anda</span>
+            <span class="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center space-x-1">
+              <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              <span>Auto-refresh Aktif</span>
+            </span>
+          </h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <th class="py-3 px-6">Waktu Tap</th>
+                <th class="py-3 px-6">Lokasi / Checkpoint</th>
+                <th class="py-3 px-6">UID RFID</th>
+                <th class="py-3 px-6">Status</th>
+                <th class="py-3 px-6">Catatan</th>
+              </tr>
+            </thead>
+            <tbody id="officerLogTableBody" class="divide-y divide-slate-100 text-sm">
+              <tr>
+                <td colspan="5" class="py-6 text-center text-slate-400">Belum ada log patroli hari ini</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================== 3. OPERATOR SCREEN (ONLY PRINT REPORT & FILTERS) ================== -->
+    <section id="operatorSection" class="hidden space-y-6">
+      
+      <!-- PRINT HEADER: Beautiful layout rendered only on print paper -->
+      <div class="hidden print-header text-center">
+        <h2 class="text-2xl font-bold uppercase tracking-wide text-slate-900">E-Patrol Security - Laporan Patroli Keamanan</h2>
+        <p class="text-xs text-slate-500">Sistem Patroli Mandiri Petugas Terintegrasi NFC Cloud Database</p>
+        <div class="mt-4 grid grid-cols-2 text-left text-xs gap-x-6 gap-y-1 bg-slate-50 p-2 border rounded border-slate-200">
+          <div><strong>Dicetak Oleh:</strong> <span id="printUser">-</span></div>
+          <div><strong>Waktu Cetak:</strong> <span id="printTime">-</span></div>
+          <div><strong>Filter Tanggal:</strong> <span id="printFilterDate">-</span></div>
+          <div><strong>Filter Shift:</strong> <span id="printFilterShift">-</span></div>
+          <div><strong>Filter Petugas:</strong> <span id="printFilterOfficer">-</span></div>
+          <div><strong>Filter Checkpoint:</strong> <span id="printFilterCheckpoint">-</span></div>
+        </div>
+      </div>
+
+      <!-- Welcome Banner for Operator Dashboard UI -->
+      <div class="bg-gradient-to-r from-blue-800 to-indigo-900 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
+        <div class="flex items-center space-x-4">
+          <div class="bg-white/10 p-3 rounded-xl">
+            <i data-lucide="printer" class="w-8 h-8 text-yellow-300"></i>
+          </div>
+          <div>
+            <h4 class="text-xl font-bold">Portal Cetak Laporan Operator</h4>
+            <p class="text-blue-100 text-xs">Anda masuk dengan tingkat hak akses Operator. Anda hanya diizinkan memantau, menyaring, dan mencetak laporan patroli.</p>
+          </div>
+        </div>
+        <button onclick="window.print()" class="bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl text-sm flex items-center justify-center space-x-2 transition-all shadow-lg shadow-emerald-500/20 shrink-0">
+          <i data-lucide="printer" class="w-5 h-5"></i>
+          <span>Cetak Laporan</span>
+        </button>
+      </div>
+
+      <!-- Filters Panel for Operator and Admin -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 no-print">
+        <div class="flex items-center space-x-2 border-b border-slate-100 pb-3">
+          <i data-lucide="sliders-horizontal" class="w-5 h-5 text-blue-600"></i>
+          <h3 class="font-bold text-slate-800">Saring & Filter Laporan Patroli</h3>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+          <!-- Filter Tanggal Mulai -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tanggal Mulai</label>
+            <div class="relative">
+              <input type="date" id="filterOpStartDate" onchange="applyOpFilters()" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+          </div>
+
+          <!-- Filter Tanggal Selesai -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tanggal Selesai</label>
+            <div class="relative">
+              <input type="date" id="filterOpEndDate" onchange="applyOpFilters()" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+          </div>
+
+          <!-- Filter Shift -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nama Shift</label>
+            <select id="filterOpShift" onchange="applyOpFilters()" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="">-- Semua Shift --</option>
+            </select>
+          </div>
+
+          <!-- Filter ID Petugas -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">ID Petugas</label>
+            <select id="filterOpOfficer" onchange="applyOpFilters()" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="">-- Semua Petugas --</option>
+            </select>
+          </div>
+
+          <!-- Filter Checkpoint -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Checkpoint</label>
+            <select id="filterOpCheckpoint" onchange="applyOpFilters()" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="">-- Semua Checkpoint --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center pt-2 text-xs">
+          <p class="text-slate-500" id="filteredCountInfo">Menampilkan 0 dari 0 data log patroli</p>
+          <button onclick="resetOpFilters()" class="text-blue-600 hover:text-blue-800 font-bold underline flex items-center space-x-1">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>Reset Semua Filter</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Table Section for Operator Log Report -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print-box">
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center no-print">
+          <h3 class="text-lg font-bold flex items-center space-x-2 text-slate-800">
+            <i data-lucide="file-spreadsheet" class="w-5 h-5 text-slate-500"></i>
+            <span>Tabel Data Patroli Lapangan</span>
+          </h3>
+          <span class="text-xs font-normal text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
+            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+            <span>Real-time Terhubung</span>
+          </span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse table-print">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <th class="py-3 px-4">No.</th>
+                <th class="py-3 px-4">Waktu Tap</th>
+                <th class="py-3 px-4">ID & Petugas</th>
+                <th class="py-3 px-4">Lokasi Checkpoint</th>
+                <th class="py-3 px-4">UID RFID</th>
+                <th class="py-3 px-4">Status Jadwal</th>
+                <th class="py-3 px-4">Catatan Temuan</th>
+              </tr>
+            </thead>
+            <tbody id="operatorLogsTableBody" class="divide-y divide-slate-100 text-sm">
+              <tr>
+                <td colspan="7" class="py-6 text-center text-slate-400">Belum ada log patroli termuat</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SIGNATURE BLOCK: Displayed ONLY in paper printouts -->
+      <div class="hidden print-signatures text-xs text-center">
+        <div class="mt-12">
+          <p>Dibuat & Dilaporkan Oleh,</p>
+          <div class="h-20"></div>
+          <p class="font-bold underline" id="signatureOperatorName">-</p>
+          <p class="text-slate-500">Staf Operator Keamanan</p>
+        </div>
+        <div class="mt-12">
+          <p>Mengetahui & Menyetujui,</p>
+          <div class="h-20"></div>
+          <p class="font-bold underline">_________________________</p>
+          <p class="text-slate-500">Komandan Regu / Supervisor</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================== 4. ADMIN DASHBOARD ================== -->
+    <section id="adminSection" class="hidden space-y-6 no-print">
+      
+      <!-- Admin Navigation Tabs -->
+      <div class="flex space-x-2 border-b border-slate-200 overflow-x-auto scrollbar-none pb-px">
+        <button onclick="switchAdminTab('logs')" id="tabBtn-logs" class="admin-tab-btn border-b-2 border-blue-600 px-4 py-2.5 text-blue-600 font-bold text-sm flex items-center space-x-2 shrink-0 transition-all">
+          <i data-lucide="file-text" class="w-4 h-4"></i>
+          <span>Log Patroli</span>
+        </button>
+        <button onclick="switchAdminTab('scan')" id="tabBtn-scan" class="admin-tab-btn border-b-2 border-transparent px-4 py-2.5 text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center space-x-2 shrink-0 transition-all">
+          <i data-lucide="nfc" class="w-4 h-4"></i>
+          <span class="relative flex h-2 w-2 mr-1">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span>Tapping Patroli Admin</span>
+        </button>
+      </div>
+
+      <!-- SUBTAB 1: LOG PATROLI -->
+      <div id="adminTab-logs" class="admin-tab-content space-y-4">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div>
+              <h3 class="text-lg font-bold flex items-center space-x-2">
+                <span>Laporan Histori Patroli</span>
+                <span class="text-xs font-normal text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
+                  <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+                  <span>Auto-Refresh Aktif (10s)</span>
+                </span>
+              </h3>
+              <p class="text-xs text-slate-500">Menampilkan hingga 500 tapping RFID terbaru secara real-time</p>
+            </div>
+            <!-- Shortcut Cetak Laporan untuk Admin telah disembunyikan / dihapus agar hanya Operator yang dapat mencetak -->
+          </div>
+          
+          <!-- Filter Controls -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs mb-4">
+            <div>
+              <label class="block font-bold text-slate-500 mb-1">Filter Petugas</label>
+              <select id="filterOfficer" onchange="applyLogFilters()" class="w-full bg-white border border-slate-200 rounded-lg p-2"></select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-500 mb-1">Filter Checkpoint</label>
+              <select id="filterCheckpoint" onchange="applyLogFilters()" class="w-full bg-white border border-slate-200 rounded-lg p-2"></select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-500 mb-1">Cari Keyword</label>
+              <input type="text" id="searchLog" oninput="applyLogFilters()" placeholder="Cari tanggal, status..." class="w-full bg-white border border-slate-200 rounded-lg p-2">
+            </div>
+          </div>
+
+          <!-- Log Table -->
+          <div class="overflow-x-auto border border-slate-100 rounded-xl">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th class="py-3 px-4">Waktu Tap</th>
+                  <th class="py-3 px-4">Petugas</th>
+                  <th class="py-3 px-4">Lokasi Checkpoint</th>
+                  <th class="py-3 px-4">RFID UID</th>
+                  <th class="py-3 px-4">Status</th>
+                  <th class="py-3 px-4">Catatan</th>
+                </tr>
+              </thead>
+              <tbody id="adminLogsTableBody" class="divide-y divide-slate-100 text-sm">
+                <!-- Log rows inject here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBTAB BARU: TAPPING PATROLI ADMIN -->
+      <div id="adminTab-scan" class="admin-tab-content hidden space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 class="text-lg font-bold flex items-center space-x-2 text-blue-900">
+                <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>
+                <span>Fitur Patroli Tapping (Role: Admin)</span>
+              </h3>
+              <p class="text-xs text-slate-500">Anda dapat melakukan pengetukan RFID patroli langsung tanpa berpindah akun.</p>
+            </div>
+            <div id="adminNfcSupportBadge" class="self-start text-xs px-3 py-1.5 rounded-full flex items-center space-x-1 bg-green-100 text-green-700">
+              <i data-lucide="info" class="w-3.5 h-3.5"></i>
+              <span>Gunakan Browser HP Android yang Mendukung NFC</span>
+            </div>
+          </div>
+
+          <div class="p-8 flex flex-col items-center justify-center text-center">
+            <div id="adminNfcScanArea" class="w-48 h-48 bg-emerald-50 text-emerald-600 rounded-full flex flex-col items-center justify-center cursor-pointer nfc-pulse hover:bg-emerald-100 transition duration-300 relative mb-6" onclick="triggerWebNFCScan('PATROL')">
+              <i data-lucide="nfc" class="w-16 h-16 mb-2 animate-bounce"></i>
+              <span class="text-xs font-bold uppercase tracking-wider">TAP RFID SEKARANG</span>
+              <div class="absolute inset-2 border border-emerald-300 border-dashed rounded-full pointer-events-none"></div>
+            </div>
+
+            <div class="max-w-md w-full">
+              <div class="bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 mb-3 flex justify-between text-xs font-semibold text-slate-600">
+                <span>Shift Terdeteksi: <strong id="adminShiftName" class="text-blue-900">-</strong></span>
+                <span id="adminShiftHours">-</span>
+              </div>
+
+              <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide text-left mb-1.5">Catatan Tambahan Patroli Admin</label>
+                <textarea id="adminPatrolNotes" rows="2" placeholder="Tulis catatan jika ada temuan (misal: 'Semua terpantau kondusif oleh Supervisor')" class="w-full text-sm bg-white border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- APP FOOTER -->
+  <footer class="bg-slate-900 text-slate-400 py-6 border-t border-slate-800 mt-auto no-print">
+    <div class="max-w-6xl mx-auto px-4 text-center space-y-2">
+      <p class="text-sm">Sistem Aplikasi Patroli Keamanan - Terintegrasi Google Apps Script & Google Sheets</p>
+      <div class="flex items-center justify-center space-x-4 text-xs text-slate-500">
+        <span>WebNFC API</span>
+        <span>•</span>
+        <span>Secured Cloud DB</span>
+        <span>•</span>
+        <span>Android Compatible</span>
+      </div>
+      <div id="apiConfigTriggerContainer" class="hidden text-xs pt-2">
+        <button onclick="toggleApiModal(true)" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all border border-slate-700">
+          ⚙️ Atur Ulang URL Web App Google
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // State Aplikasi
+    let currentUser = null;
+    let cachedOfficers = [];
+    let cachedCheckpoints = [];
+    let cachedSchedules = [];
+    let cachedLogs = [];
+    let isWebNFCAvailable = false;
+    let activeNFCScanMode = "PATROL";
+
+    // Client-side local double tap prevention state (2 Menit / 120 Detik Cooldown)
+    let lastTapTimes = {};
+    const TAPPING_COOLDOWN_MS = 120000; 
+
+    // Auto-refresh timer reference
+    let autoRefreshInterval = null;
+
+    // DETEKSI APAKAH DI-RUN DI LUAR IFRAME GOOGLE (STANDALONE WEB)
+    const IS_STANDALONE = (typeof google === 'undefined' || !google.script || !google.script.run);
+
+    // ==============================================
+    // ISOLATED CONNECTION RUNNER (Solusi Race Condition)
+    // ==============================================
+    class GasRunner {
+      constructor() {
+        this.successHandler = null;
+        this.failureHandler = null;
+      }
+      
+      withSuccessHandler(handler) {
+        this.successHandler = handler;
+        return this;
+      }
+      
+      withFailureHandler(handler) {
+        this.failureHandler = handler;
+        return this;
+      }
+      
+      async _execute(actionName, args) {
+        let gasWebAppUrl = localStorage.getItem("gas_api_url") || "";
+        
+        if (!gasWebAppUrl) {
+          document.getElementById("loadingOverlay").classList.add("hidden");
+          toggleApiModal(true);
+          if (this.failureHandler) this.failureHandler("URL Web App belum diatur.");
+          return;
+        }
+        
+        const readActions = ["getSchedules", "getCheckpoints", "getPatrolLogs", "getOfficers"];
+        const isReadAction = readActions.includes(actionName);
+        
+        try {
+          let response;
+          
+          if (isReadAction) {
+            const separator = gasWebAppUrl.includes("?") ? "&" : "?";
+            const fetchUrl = `${gasWebAppUrl}${separator}action=${actionName}&t=${Date.now()}`;
+            response = await fetch(fetchUrl, { method: "GET" });
+          } else {
+            response = await fetch(gasWebAppUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8"
+              },
+              body: JSON.stringify({
+                action: actionName,
+                args: args
+              })
+            });
+          }
+          
+          const result = await response.json();
+          if (result.success) {
+            if (this.successHandler) this.successHandler(result.data);
+          } else {
+            if (this.failureHandler) this.failureHandler(result.error);
+          }
+        } catch (err) {
+          console.error("Fetch API Error untuk " + actionName + ":", err);
+          if (this.failureHandler) this.failureHandler("Koneksi API Gagal. Pastikan URL skrip benar.");
+        }
+      }
+      
+      loginUser(u, p) { this._execute("loginUser", [u, p]); }
+      getSchedules() { this._execute("getSchedules", []); }
+      getCheckpoints() { this._execute("getCheckpoints", []); }
+      getPatrolLogs() { this._execute("getPatrolLogs", []); }
+      submitPatrolLog(l) { this._execute("submitPatrolLog", [l]); }
+      getOfficers() { this._execute("getOfficers", []); }
+      saveOfficer(o) { this._execute("saveOfficer", [o]); }
+      deleteOfficer(i) { this._execute("deleteOfficer", [i]); }
+      saveCheckpoint(c) { this._execute("saveCheckpoint", [c]); }
+      deleteCheckpoint(u) { this._execute("deleteCheckpoint", [u]); }
+      saveSchedule(s) { this._execute("saveSchedule", [s]); }
+      deleteSchedule(i) { this._execute("deleteSchedule", [i]); }
+      setupDatabase() { this._execute("setupDatabase", []); }
+    }
+
+    if (IS_STANDALONE) {
+      document.getElementById("apiConfigTriggerContainer").classList.remove("hidden");
+      
+      window.google = {
+        script: {
+          get run() {
+            return new GasRunner();
+          }
+        }
+      };
+    }
+
+    /**
+     * Kontrol Modal Konfigurasi URL API
+     */
+    function toggleApiModal(show) {
+      const modal = document.getElementById("apiConfigModal");
+      const closeBtn = document.getElementById("closeApiModalBtn");
+      
+      if (show) {
+        modal.classList.remove("hidden");
+        const savedUrl = localStorage.getItem("gas_api_url") || "";
+        document.getElementById("configApiUrlInput").value = savedUrl;
+        if (savedUrl) {
+          closeBtn.classList.remove("hidden");
+        } else {
+          closeBtn.classList.add("hidden");
+        }
+      } else {
+        modal.classList.add("hidden");
+      }
+    }
+
+    /**
+     * Menyimpan Konfigurasi URL Web App Google Sheets
+     */
+    function saveApiConfiguration() {
+      const urlInput = document.getElementById("configApiUrlInput").value.trim();
+      const errorEl = document.getElementById("configApiUrlError");
+      
+      errorEl.classList.add("hidden");
+      
+      if (!urlInput) {
+        errorEl.innerText = "URL Web App tidak boleh kosong!";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+      
+      if (!urlInput.startsWith("https://script.google.com") || !urlInput.includes("/exec")) {
+        errorEl.innerText = "Format URL salah! URL harus berakhiran dengan /exec";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+      
+      localStorage.setItem("gas_api_url", urlInput);
+      showToast("URL Web App Google Sheets berhasil disimpan!", "success");
+      toggleApiModal(false);
+      location.reload();
+    }
+
+    // Inisialisasi awal saat load halaman
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      checkWebNFCSupport();
+      showSection("loginSection");
+      
+      // Listen to print event to populate print date automatically
+      window.addEventListener('beforeprint', () => {
+        if (currentUser) {
+          document.getElementById("printUser").innerText = `${currentUser.name} (${currentUser.role})`;
+          document.getElementById("signatureOperatorName").innerText = currentUser.name;
+        }
+        document.getElementById("printTime").innerText = new Date().toLocaleString('id-ID');
+        
+        // Populate filter labels
+        const sDate = document.getElementById("filterOpStartDate").value || "Semua Tanggal";
+        const eDate = document.getElementById("filterOpEndDate").value || "Semua Tanggal";
+        document.getElementById("printFilterDate").innerText = `${sDate} s/d ${eDate}`;
+        
+        const selShift = document.getElementById("filterOpShift");
+        document.getElementById("printFilterShift").innerText = selShift.options[selShift.selectedIndex]?.text || "Semua Shift";
+        
+        const selOff = document.getElementById("filterOpOfficer");
+        document.getElementById("printFilterOfficer").innerText = selOff.options[selOff.selectedIndex]?.text || "Semua Petugas";
+        
+        const selCheck = document.getElementById("filterOpCheckpoint");
+        document.getElementById("printFilterCheckpoint").innerText = selCheck.options[selCheck.selectedIndex]?.text || "Semua Checkpoint";
+      });
+
+      if (!('NDEFReader' in window)) {
+        showToast("WebNFC tidak didukung langsung. Gunakan mode manual jika menggunakan PC atau browser non-Chrome Android.", "warning");
+      }
+    });
+
+    /**
+     * Memeriksa dukungan NFC pada browser
+     */
+    function checkWebNFCSupport() {
+      const badge = document.getElementById("nfcSupportBadge");
+      const adminBadge = document.getElementById("adminNfcSupportBadge");
+      const text = document.getElementById("nfcSupportText");
+      
+      if ('NDEFReader' in window) {
+        isWebNFCAvailable = true;
+        if (badge) badge.className = "self-start text-xs px-3 py-1.5 rounded-full flex items-center space-x-1 bg-green-100 text-green-700";
+        if (adminBadge) adminBadge.className = "self-start text-xs px-3 py-1.5 rounded-full flex items-center space-x-1 bg-green-100 text-green-700";
+        if (text) text.innerText = "NFC Siap";
+      } else {
+        isWebNFCAvailable = false;
+        if (badge) badge.className = "self-start text-xs px-3 py-1.5 rounded-full flex items-center space-x-1 bg-yellow-100 text-yellow-700";
+        if (adminBadge) adminBadge.className = "self-start text-xs px-3 py-1.5 rounded-full flex items-center space-x-1 bg-yellow-100 text-yellow-700";
+        if (text) text.innerText = "NFC Manual / Non-Android";
+      }
+    }
+
+    /**
+     * Trigger manual untuk scan NFC di browser (berdasarkan User Gesture)
+     */
+    async function triggerWebNFCScan(mode = "PATROL") {
+      activeNFCScanMode = mode;
+      if (!isWebNFCAvailable) {
+        showToast("WebNFC tidak didukung pada browser Anda. Gunakan form input manual di bawah.", "warning");
+        if (currentUser && currentUser.role === "Admin") {
+          toggleManualInput("adminManualContainer", true);
+        } else {
+          toggleManualInput("officerManualContainer", true);
+        }
+        return;
+      }
+      
+      try {
+        showLoading("Mendekatkan HP Anda ke titik kartu RFID...");
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        
+        ndef.addEventListener("reading", ({ message, serialNumber }) => {
+          const formattedUID = serialNumber.toLowerCase();
+          if (activeNFCScanMode === "PATROL") {
+            handleRfidScanned(formattedUID);
+          }
+        });
+
+        hideLoading();
+        showToast("NFC Scanner Aktif. Tempelkan kartu RFID sekarang.", "info");
+      } catch (err) {
+        hideLoading();
+        if (IS_STANDALONE) {
+          showToast("Gagal mengaktifkan sensor. Pastikan fitur NFC HP Anda sudah aktif.", "error");
+        } else {
+          showToast("Akses NFC diblokir Sandbox Google. Buka aplikasi sebagai File Mandiri atau GitHub Pages agar NFC Aktif!", "warning");
+          if (currentUser && currentUser.role === "Admin") {
+            toggleManualInput("adminManualContainer", true);
+          } else {
+            toggleManualInput("officerManualContainer", true);
+          }
+        }
+      }
+    }
+
+    /**
+     * Toggle manual input box secara fleksibel berdasarkan target container ID
+     */
+    function toggleManualInput(containerId, forceShow = false) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      if (forceShow || el.classList.contains("hidden")) {
+        el.classList.remove("hidden");
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+      } else {
+        el.classList.add("hidden");
+      }
+    }
+
+    /**
+     * Navigasi Tampilan Layar
+     */
+    function showSection(sectionId) {
+      document.getElementById("loginSection").classList.add("hidden");
+      document.getElementById("officerSection").classList.add("hidden");
+      document.getElementById("adminSection").classList.add("hidden");
+      document.getElementById("operatorSection").classList.add("hidden");
+      
+      document.getElementById(sectionId).classList.remove("hidden");
+      
+      if (currentUser) {
+        document.getElementById("userInfo").classList.remove("hidden");
+        document.getElementById("userDisplayName").innerText = currentUser.name;
+        document.getElementById("userDisplayRole").innerText = currentUser.role;
+      } else {
+        document.getElementById("userInfo").classList.add("hidden");
+      }
+      lucide.createIcons();
+    }
+
+    /**
+     * Loading Spinner Overlay
+     */
+    function showLoading(msg = "Sedang memproses...") {
+      document.getElementById("loadingMessage").innerText = msg;
+      document.getElementById("loadingOverlay").classList.remove("hidden");
+    }
+    function hideLoading() {
+      document.getElementById("loadingOverlay").classList.add("hidden");
+    }
+
+    /**
+     * Notifikasi Toast
+     */
+    function showToast(message, type = "success") {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      toast.className = `flex items-center space-x-3 p-4 rounded-xl shadow-lg border text-white transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto max-w-sm w-full`;
+      
+      let icon = "check-circle";
+      if (type === "success") {
+        toast.className += " bg-emerald-600 border-emerald-500";
+        icon = "check-circle";
+      } else if (type === "error") {
+        toast.className += " bg-rose-600 border-rose-500";
+        icon = "alert-triangle";
+      } else if (type === "warning") {
+        toast.className += " bg-amber-600 border-amber-500";
+        icon = "alert-circle";
+      } else {
+        toast.className += " bg-blue-600 border-blue-500";
+        icon = "info";
+      }
+
+      toast.innerHTML = `
+        <i data-lucide="${icon}" class="w-5 h-5 shrink-0"></i>
+        <p class="text-xs font-semibold flex-grow">${message}</p>
+        <button onclick="this.parentElement.remove()" class="text-white/80 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+      `;
+      
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.classList.remove("translate-y-2", "opacity-0");
+      }, 50);
+
+      setTimeout(() => {
+        toast.classList.add("translate-y-2", "opacity-0");
+        setTimeout(() => toast.remove(), 300);
+      }, 5000); 
+    }
+
+    /**
+     * AUTO REFRESH LOOP TIMER
+     */
+    function startAutoRefresh() {
+      stopAutoRefresh();
+      autoRefreshInterval = setInterval(() => {
+        if (!currentUser) return;
+        if (currentUser.role === "Admin") {
+          loadAdminLogs(true);
+        } else if (currentUser.role === "Operator") {
+          loadOperatorLogs(true);
+        } else {
+          loadOfficerLogs(null, true);
+        }
+      }, 10000);
+    }
+
+    function stopAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+      }
+    }
+
+    // ==============================================
+    // LOGIN & AUTENTIKASI UTAMA
+    // ==============================================
+    function handleLogin(e) {
+      e.preventDefault();
+      const userId = document.getElementById("loginId").value.trim();
+      const pin = document.getElementById("loginPin").value;
+      
+      showLoading("Memverifikasi Kredensial...");
+      
+      google.script.run
+        .withSuccessHandler(result => {
+          hideLoading();
+          if (result.success) {
+            currentUser = {
+              id: result.userId,
+              name: result.name,
+              role: result.role
+            };
+            
+            showToast(`Selamat datang, ${result.name}!`, "success");
+            
+            if (result.role === "Admin") {
+              loadAdminData();
+              showSection("adminSection");
+            } else if (result.role === "Operator") {
+              loadOperatorDashboard();
+              showSection("operatorSection");
+            } else {
+              loadOfficerDashboard();
+              showSection("officerSection");
+            }
+            startAutoRefresh();
+          } else {
+            showToast(result.message || "ID atau PIN salah!", "error");
+          }
+        })
+        .withFailureHandler(err => {
+          hideLoading();
+          showToast("Koneksi gagal: " + err, "error");
+        })
+        .loginUser(userId, pin);
+    }
+
+    function logout() {
+      currentUser = null;
+      stopAutoRefresh();
+      document.getElementById("loginId").value = "";
+      document.getElementById("loginPin").value = "";
+      showSection("loginSection");
+      showToast("Berhasil keluar dari sistem.", "info");
+    }
+
+    // ==============================================
+    // SINKRONISASI DATA MANUAL (GET DATA)
+    // ==============================================
+    function manualSync() {
+      const syncIcon = document.getElementById("syncHeaderIcon");
+      if (syncIcon) syncIcon.classList.add("spin-active");
+      
+      if (currentUser && currentUser.role === "Admin") {
+        google.script.run.withSuccessHandler(officers => {
+          cachedOfficers = officers || [];
+          populateFilters();
+        }).getOfficers();
+
+        google.script.run.withSuccessHandler(checkpoints => {
+          cachedCheckpoints = checkpoints || [];
+          populateFilters();
+        }).getCheckpoints();
+
+        google.script.run.withSuccessHandler(schedules => {
+          cachedSchedules = schedules || [];
+          updateAdminShiftDisplay();
+        }).getSchedules();
+
+        google.script.run.withSuccessHandler(logs => {
+          cachedLogs = logs || [];
+          applyLogFilters();
+          if (syncIcon) syncIcon.classList.remove("spin-active");
+        }).withFailureHandler(err => {
+          if (syncIcon) syncIcon.classList.remove("spin-active");
+        }).getPatrolLogs();
+        
+      } else if (currentUser && currentUser.role === "Operator") {
+        loadOperatorDashboard(() => {
+          if (syncIcon) syncIcon.classList.remove("spin-active");
+        });
+      } else if (currentUser) {
+        let schedulesLoaded = false;
+        let checkpointsLoaded = false;
+        let logsLoaded = false;
+
+        const checkAllManualLoaded = () => {
+          if (schedulesLoaded && checkpointsLoaded && logsLoaded) {
+            if (syncIcon) syncIcon.classList.remove("spin-active");
+          }
+        };
+
+        google.script.run.withSuccessHandler(schedules => {
+          cachedSchedules = schedules || [];
+          updateActiveShiftDisplay();
+          schedulesLoaded = true;
+          checkAllManualLoaded();
+        }).getSchedules();
+
+        google.script.run.withSuccessHandler(checkpoints => {
+          cachedCheckpoints = checkpoints || [];
+          document.getElementById("checkpointCount").innerText = cachedCheckpoints.length;
+          checkpointsLoaded = true;
+          checkAllManualLoaded();
+        }).getCheckpoints();
+
+        loadOfficerLogs(() => {
+          logsLoaded = true;
+          checkAllManualLoaded();
+        });
+      } else {
+        if (syncIcon) syncIcon.classList.remove("spin-active");
+      }
+    }
+
+    // ==============================================
+    // OPERATOR LOGIC & REPORT PRINTING
+    // ==============================================
+    function loadOperatorDashboard(callback) {
+      showLoading("Memuat data laporan patroli...");
+      let counter = 0;
+      const checkFinish = () => {
+        counter++;
+        if (counter === 4) {
+          populateOperatorFilterDropdowns();
+          applyOpFilters();
+          hideLoading();
+          if (callback) callback();
+        }
+      };
+
+      google.script.run.withSuccessHandler(officers => {
+        cachedOfficers = officers || [];
+        checkFinish();
+      }).getOfficers();
+
+      google.script.run.withSuccessHandler(checkpoints => {
+        cachedCheckpoints = checkpoints || [];
+        checkFinish();
+      }).getCheckpoints();
+
+      google.script.run.withSuccessHandler(schedules => {
+        cachedSchedules = schedules || [];
+        checkFinish();
+      }).getSchedules();
+
+      google.script.run.withSuccessHandler(logs => {
+        cachedLogs = logs || [];
+        checkFinish();
+      }).getPatrolLogs();
+    }
+
+    function loadOperatorLogs(isBackground = false) {
+      google.script.run.withSuccessHandler(logs => {
+        cachedLogs = logs || [];
+        applyOpFilters();
+      }).getPatrolLogs();
+    }
+
+    function populateOperatorFilterDropdowns() {
+      // 1. Petugas
+      const opOfficerSelect = document.getElementById("filterOpOfficer");
+      opOfficerSelect.innerHTML = '<option value="">-- Semua Petugas --</option>';
+      cachedOfficers.forEach(o => {
+        opOfficerSelect.innerHTML += `<option value="${o.id}">${o.name} (${o.id})</option>`;
+      });
+
+      // 2. Checkpoint
+      const opCheckSelect = document.getElementById("filterOpCheckpoint");
+      opCheckSelect.innerHTML = '<option value="">-- Semua Checkpoint --</option>';
+      cachedCheckpoints.forEach(c => {
+        opCheckSelect.innerHTML += `<option value="${c.uid}">${c.name}</option>`;
+      });
+
+      // 3. Shift
+      const opShiftSelect = document.getElementById("filterOpShift");
+      opShiftSelect.innerHTML = '<option value="">-- Semua Shift --</option>';
+      cachedSchedules.forEach(s => {
+        opShiftSelect.innerHTML += `<option value="${s.id}">${s.name} (${s.startTime}-${s.endTime})</option>`;
+      });
+    }
+
+    function applyOpFilters() {
+      const sDate = document.getElementById("filterOpStartDate").value;
+      const eDate = document.getElementById("filterOpEndDate").value;
+      const shiftId = document.getElementById("filterOpShift").value;
+      const officerId = document.getElementById("filterOpOfficer").value;
+      const checkpointUid = document.getElementById("filterOpCheckpoint").value;
+
+      // Parsing Tanggal Mulai dan Akhir
+      let startDateTime = sDate ? new Date(sDate + "T00:00:00").getTime() : null;
+      let endDateTime = eDate ? new Date(eDate + "T23:59:59").getTime() : null;
+
+      // Cari Aturan Shift jika dipilih
+      let activeShiftRule = cachedSchedules.find(s => s.id === shiftId);
+
+      const filteredLogs = cachedLogs.filter(log => {
+        if (!log) return false;
+        
+        // 1. Filter Tanggal
+        if (log.timestamp) {
+          const logTime = new Date(log.timestamp).getTime();
+          if (startDateTime && logTime < startDateTime) return false;
+          if (endDateTime && logTime > endDateTime) return false;
+        }
+
+        // 2. Filter ID Petugas
+        if (officerId && log.officerId !== officerId) {
+          return false;
+        }
+
+        // 3. Filter Checkpoint ID/UID
+        if (checkpointUid && log.uid !== checkpointUid) {
+          return false;
+        }
+
+        // 4. Filter Nama Shift
+        if (activeShiftRule && log.timestamp) {
+          const logDateObj = new Date(log.timestamp);
+          const logHours = logDateObj.getHours();
+          const logMinutes = logDateObj.getMinutes();
+          const logTimeInMinutes = logHours * 60 + logMinutes;
+
+          // Parsing rules shift
+          const [sH, sM] = activeShiftRule.startTime.split(':').map(Number);
+          const [eH, eM] = activeShiftRule.endTime.split(':').map(Number);
+          
+          const shiftStartInMinutes = sH * 60 + sM;
+          const shiftEndInMinutes = eH * 60 + eM;
+
+          if (shiftStartInMinutes <= shiftEndInMinutes) {
+            // Shift Normal (misal 08:00 - 17:00)
+            if (logTimeInMinutes < shiftStartInMinutes || logTimeInMinutes > shiftEndInMinutes) {
+              return false;
+            }
+          } else {
+            // Shift Lewat Tengah Malam (misal 20:00 - 04:00)
+            if (logTimeInMinutes < shiftStartInMinutes && logTimeInMinutes > shiftEndInMinutes) {
+              return false;
+            }
+          }
+        }
+
+        return true;
+      });
+
+      // Render ke tabel Operator
+      const tbody = document.getElementById("operatorLogsTableBody");
+      document.getElementById("filteredCountInfo").innerText = `Menampilkan ${filteredLogs.length} dari ${cachedLogs.length} data log patroli`;
+      
+      if (filteredLogs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400 text-xs">Tidak ada log patroli yang cocok dengan filter aktif.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filteredLogs.map((log, index) => {
+        const formattedDate = formatDateString(log.timestamp);
+        const logStatus = log.status ? log.status.toString() : '';
+        const isSesuai = logStatus.includes('Sesuai');
+        return `
+          <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
+            <td class="py-3 px-4 font-mono">${index + 1}</td>
+            <td class="py-3 px-4 font-semibold">${formattedDate}</td>
+            <td class="py-3 px-4">
+              <span class="font-bold block">${log.officerName || '-'}</span>
+              <span class="text-[10px] text-slate-400 font-semibold uppercase">ID: ${log.officerId || '-'}</span>
+            </td>
+            <td class="py-3 px-4 font-semibold text-blue-900">${log.location || '-'}</td>
+            <td class="py-3 px-4 font-mono text-slate-400 text-[10px]">${log.uid || '-'}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded-full font-semibold ${isSesuai ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">
+                ${logStatus || 'Tidak Diketahui'}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-slate-500 italic max-w-xs truncate">${log.notes || '-'}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function resetOpFilters() {
+      document.getElementById("filterOpStartDate").value = "";
+      document.getElementById("filterOpEndDate").value = "";
+      document.getElementById("filterOpShift").value = "";
+      document.getElementById("filterOpOfficer").value = "";
+      document.getElementById("filterOpCheckpoint").value = "";
+      applyOpFilters();
+      showToast("Filter pencarian dibersihkan", "info");
+    }
+
+    // Fungsi redirectToOperatorPrint() dihapus agar admin tidak memiliki akses navigasi ke menu cetak operator
+
+    /**
+     * OFFICER LOGIC & RFID TAPPING
+     */
+    function loadOfficerDashboard() {
+      showLoading("Memuat jadwal dan checkpoint aktif...");
+      
+      let schedulesLoaded = false;
+      let checkpointsLoaded = false;
+      let logsLoaded = false;
+
+      const checkAllLoaded = () => {
+        if (schedulesLoaded && checkpointsLoaded && logsLoaded) {
+          hideLoading();
+        }
+      };
+
+      google.script.run
+        .withSuccessHandler(schedules => {
+          cachedSchedules = schedules || [];
+          updateActiveShiftDisplay();
+          schedulesLoaded = true;
+          checkAllLoaded();
+        })
+        .withFailureHandler(err => {
+          schedulesLoaded = true;
+          checkAllLoaded();
+        })
+        .getSchedules();
+
+      google.script.run
+        .withSuccessHandler(checkpoints => {
+          cachedCheckpoints = checkpoints || [];
+          document.getElementById("checkpointCount").innerText = cachedCheckpoints.length;
+          checkpointsLoaded = true;
+          checkAllLoaded();
+        })
+        .withFailureHandler(err => {
+          checkpointsLoaded = true;
+          checkAllLoaded();
+        })
+        .getCheckpoints();
+
+      loadOfficerLogs(() => {
+        logsLoaded = true;
+        checkAllLoaded();
+      });
+    }
+
+    function loadOfficerLogs(callback, isBackground = false) {
+      google.script.run
+        .withSuccessHandler(logs => {
+          try {
+            cachedLogs = logs || [];
+            
+            const myLogs = cachedLogs.filter(l => {
+              if (!l || !l.officerId) return false;
+              const logOfficerId = l.officerId.toString().trim().toLowerCase();
+              const currentUserId = (currentUser && currentUser.id) ? currentUser.id.toString().trim().toLowerCase() : '';
+              return logOfficerId === currentUserId;
+            });
+            
+            document.getElementById("officerTodayTaps").innerText = myLogs.length;
+
+            const tableBody = document.getElementById("officerLogTableBody");
+            if (myLogs.length === 0) {
+              tableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-400 text-xs">Belum ada log patroli hari ini</td></tr>`;
+            } else {
+              tableBody.innerHTML = myLogs.map(log => {
+                const formattedDate = formatDateString(log.timestamp);
+                const logStatus = log.status ? log.status.toString() : '';
+                const isSesuai = logStatus.includes('Sesuai');
+                return `
+                  <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                    <td class="py-3 px-6 font-semibold">${formattedDate}</td>
+                    <td class="py-3 px-6 text-slate-800 font-bold">${log.location || '-'}</td>
+                    <td class="py-3 px-6 font-mono text-xs text-slate-400">${log.uid || '-'}</td>
+                    <td class="py-3 px-6">
+                      <span class="px-2 py-1 rounded-full text-xs font-semibold ${isSesuai ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">
+                        ${logStatus || 'Tidak Diketahui'}
+                      </span>
+                    </td>
+                    <td class="py-3 px-6 text-slate-500">${log.notes || '-'}</td>
+                  </tr>
+                `;
+              }).join('');
+            }
+          } catch (err) {
+            console.error("Error processing officer logs:", err);
+          } finally {
+            if (callback) callback();
+          }
+        })
+        .withFailureHandler(err => {
+          if (callback) callback();
+        })
+        .getPatrolLogs();
+    }
+
+    function updateActiveShiftDisplay() {
+      const now = new Date();
+      const currentHourMin = now.toTimeString().substring(0, 5); // "HH:MM"
+      
+      let activeShift = cachedSchedules.find(s => {
+        return currentHourMin >= s.startTime && currentHourMin <= s.endTime;
+      });
+
+      if (!activeShift && cachedSchedules.length > 0) {
+        activeShift = cachedSchedules[0];
+      }
+
+      if (activeShift) {
+        document.getElementById("activeShiftName").innerText = activeShift.name;
+        document.getElementById("activeShiftHours").innerText = `${activeShift.startTime} s.d ${activeShift.endTime}`;
+        document.getElementById("activeShiftName").dataset.scheduleId = activeShift.id;
+      } else {
+        document.getElementById("activeShiftName").innerText = "Tidak Ada Shift Kerja";
+        document.getElementById("activeShiftHours").innerText = "Di Luar Jam Kerja Terjadwal";
+      }
+    }
+
+    function updateAdminShiftDisplay() {
+      const now = new Date();
+      const currentHourMin = now.toTimeString().substring(0, 5);
+      
+      let activeShift = cachedSchedules.find(s => {
+        return currentHourMin >= s.startTime && currentHourMin <= s.endTime;
+      });
+
+      if (!activeShift && cachedSchedules.length > 0) {
+        activeShift = cachedSchedules[0];
+      }
+
+      const labelName = document.getElementById("adminShiftName");
+      const labelHours = document.getElementById("adminShiftHours");
+
+      if (labelName && labelHours) {
+        if (activeShift) {
+          labelName.innerText = activeShift.name;
+          labelName.dataset.scheduleId = activeShift.id;
+          labelHours.innerText = `${activeShift.startTime} - ${activeShift.endTime}`;
+        } else {
+          labelName.innerText = "Luar Jam Dinas";
+          labelName.dataset.scheduleId = "";
+          labelHours.innerText = "-";
+        }
+      }
+    }
+
+    /**
+     * Memproses RFID setelah berhasil terbaca sensor NFC (Termasuk Proteksi Tapping Ganda & Safety Timeout)
+     */
+    function handleRfidScanned(uid) {
+      if (!currentUser) return;
+
+      // 1. Validasi Cooldown di Sisi Klien
+      const now = Date.now();
+      if (lastTapTimes[uid] && (now - lastTapTimes[uid] < TAPPING_COOLDOWN_MS)) {
+        const remainingSec = Math.ceil((TAPPING_COOLDOWN_MS - (now - lastTapTimes[uid])) / 1000);
+        showToast(`RFID ini baru saja di-tap! Mohon tunggu ${remainingSec} detik lagi untuk berpatroli kembali di titik yang sama.`, "warning");
+        return;
+      }
+      
+      let notes = "";
+      let activeShiftId = "";
+
+      if (currentUser.role === "Admin") {
+        notes = document.getElementById("adminPatrolNotes").value;
+        activeShiftId = (document.getElementById("adminShiftName") && document.getElementById("adminShiftName").dataset.scheduleId) || "";
+      } else {
+        notes = document.getElementById("patrolNotes").value;
+        activeShiftId = document.getElementById("activeShiftName").dataset.scheduleId || "";
+      }
+
+      showLoading("Menyimpan Log Patroli...");
+
+      // SAFETY TIMEOUT FALLBACK - Mencegah stuck loading jika koneksi terputus di tengah jalan
+      const safetyTimeout = setTimeout(() => {
+        hideLoading();
+        showToast("Proses penyimpanan lambat. Silakan periksa kembali sinyal internet Anda.", "warning");
+      }, 15000); 
+      
+      const logData = {
+        uid: uid,
+        officerId: currentUser.id,
+        scheduleId: activeShiftId,
+        notes: notes
+      };
+
+      google.script.run
+        .withSuccessHandler(response => {
+          clearTimeout(safetyTimeout); 
+          hideLoading();
+          if (response.success) {
+            lastTapTimes[uid] = Date.now();
+
+            showToast(`BERHASIL! Checkpoint Ter-Scan: "${response.location}". Status: ${response.status}`, "success");
+            playBeep();
+            
+            const notesEl = document.getElementById("patrolNotes");
+            const adminNotesEl = document.getElementById("adminPatrolNotes");
+            const manualUidEl = document.getElementById("manualUid");
+
+            if (notesEl) notesEl.value = "";
+            if (adminNotesEl) adminNotesEl.value = "";
+            if (manualUidEl) manualUidEl.value = "";
+            
+            if (currentUser.role === "Admin") {
+              loadAdminLogs();
+            } else {
+              showLoading("Memperbarui log...");
+              loadOfficerLogs(() => hideLoading());
+            }
+          } else if (response.isCooldown) {
+            showToast(response.message, "warning");
+          } else {
+            showToast("Gagal mencatat patroli.", "error");
+          }
+        })
+        .withFailureHandler(err => {
+          clearTimeout(safetyTimeout); 
+          hideLoading();
+          showToast("Masalah Koneksi: " + err, "error");
+        })
+        .submitPatrolLog(logData);
+    }
+
+    /**
+     * Submit patroli via form manual fallback
+     */
+    function submitManualPatrol(uidInputId, notesInputId) {
+      const uid = document.getElementById(uidInputId).value.trim();
+      if (!uid) {
+        showToast("UID RFID tidak boleh kosong!", "error");
+        return;
+      }
+      handleRfidScanned(uid);
+    }
+
+    /**
+     * Bunyi bip untuk menandakan scan sukses
+     */
+    function playBeep() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); 
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.15); 
+      } catch (e) {
+        console.log("Audio feedback tidak disupport browser.");
+      }
+    }
+
+    // ==============================================
+    // ADMIN DASHBOARD TABS & CRUD
+    // ==============================================
+    function switchAdminTab(tabName) {
+      document.querySelectorAll(".admin-tab-content").forEach(el => el.classList.add("hidden"));
+      document.querySelectorAll(".admin-tab-btn").forEach(el => {
+        el.classList.remove("border-blue-600", "text-blue-600", "font-bold");
+        el.classList.add("border-transparent", "text-slate-500", "font-semibold");
+      });
+
+      document.getElementById(`adminTab-${tabName}`).classList.remove("hidden");
+      const activeBtn = document.getElementById(`tabBtn-${tabName}`);
+      activeBtn.classList.remove("border-transparent", "text-slate-500", "font-semibold");
+      activeBtn.classList.add("border-blue-600", "text-blue-600", "font-bold");
+
+      activeNFCScanMode = "PATROL";
+    }
+
+    /**
+     * Memuat semua data yang dibutuhkan oleh Admin
+     */
+    function loadAdminData() {
+      showLoading("Mengambil data administrasi...");
+      
+      google.script.run.withSuccessHandler(officers => {
+        cachedOfficers = officers || [];
+        populateFilters();
+      }).getOfficers();
+
+      google.script.run.withSuccessHandler(checkpoints => {
+        cachedCheckpoints = checkpoints || [];
+        populateFilters();
+      }).getCheckpoints();
+
+      google.script.run.withSuccessHandler(schedules => {
+        cachedSchedules = schedules || [];
+        updateAdminShiftDisplay();
+      }).getSchedules();
+
+      loadAdminLogs();
+    }
+
+    function loadAdminLogs(isBackground = false) {
+      if (!isBackground) {
+        showLoading("Memperbarui Log Kehadiran...");
+      }
+      google.script.run.withSuccessHandler(logs => {
+        cachedLogs = logs || [];
+        applyLogFilters();
+        if (!isBackground) {
+          hideLoading();
+        }
+      }).withFailureHandler(err => {
+        if (!isBackground) {
+          hideLoading();
+        }
+      }).getPatrolLogs();
+    }
+
+    /**
+     * Filter drop down populator
+     */
+    function populateFilters() {
+      const fOfficer = document.getElementById("filterOfficer");
+      const fCheckpoint = document.getElementById("filterCheckpoint");
+
+      if (fOfficer) {
+        fOfficer.innerHTML = `<option value="">-- Semua Petugas --</option>` + 
+          cachedOfficers.map(o => `<option value="${o.id}">${o.name} (${o.id})</option>`).join('');
+      }
+
+      if (fCheckpoint) {
+        fCheckpoint.innerHTML = `<option value="">-- Semua Checkpoint --</option>` + 
+          cachedCheckpoints.map(c => `<option value="${c.uid}">${c.name}</option>`).join('');
+      }
+    }
+
+    /**
+     * Menyaring baris log sesuai input filter di UI Admin
+     */
+    function applyLogFilters() {
+      const fOfficer = document.getElementById("filterOfficer").value;
+      const fCheckpoint = document.getElementById("filterCheckpoint").value;
+      const keyword = document.getElementById("searchLog").value.toLowerCase();
+
+      const filtered = cachedLogs.filter(log => {
+        if (!log) return false;
+        const logOfficerId = log.officerId ? log.officerId.toString().toLowerCase() : '';
+        const logUid = log.uid ? log.uid.toString().toLowerCase() : '';
+        const logOfficerName = log.officerName ? log.officerName.toString().toLowerCase() : '';
+        const logLocation = log.location ? log.location.toString().toLowerCase() : '';
+        const logStatus = log.status ? log.status.toString().toLowerCase() : '';
+        const logNotes = log.notes ? log.notes.toString().toLowerCase() : '';
+
+        const matchOfficer = !fOfficer || logOfficerId === fOfficer.toLowerCase();
+        const matchCheckpoint = !fCheckpoint || logUid === fCheckpoint.toLowerCase();
+        const matchText = !keyword || 
+          logOfficerName.includes(keyword) || 
+          logLocation.includes(keyword) || 
+          logStatus.includes(keyword) || 
+          logNotes.includes(keyword) ||
+          logUid.includes(keyword);
+
+        return matchOfficer && matchCheckpoint && matchText;
+      });
+
+      const tbody = document.getElementById("adminLogsTableBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-400 text-xs">Tidak ada data log yang cocok</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(log => {
+        const formattedDate = formatDateString(log.timestamp);
+        return `
+          <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
+            <td class="py-3 px-4 font-semibold text-xs whitespace-nowrap">${formattedDate}</td>
+            <td class="py-3 px-4">
+              <span class="font-bold block">${log.officerName || '-'}</span>
+              <span class="text-[10px] text-slate-400">ID: ${log.officerId || '-'}</span>
+            </td>
+            <td class="py-3 px-4 font-semibold text-blue-900">${log.location || '-'}</td>
+            <td class="py-3 px-4 font-mono text-slate-400">${log.uid || '-'}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-1 rounded-full text-[10px] font-semibold ${log.status && log.status.toString().includes('Sesuai') ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">
+                ${log.status || 'Tidak Diketahui'}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-slate-500 italic max-w-xs truncate" title="${log.notes || ''}">${log.notes || '-'}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    /**
+     * Handler pemicu inisialisasi awal spreadsheet
+     */
+    function handleSetupDatabase() {
+      showLoading("Mengonfigurasi Google Sheets & Tabel Sistem...");
+      google.script.run
+        .withSuccessHandler(res => {
+          hideLoading();
+          if (res.success) {
+            showToast("Database Spreadsheet berhasil dibuat dan terhubung!", "success");
+            document.getElementById("setupBanner").classList.add("hidden");
+            if (currentUser && currentUser.role === "Admin") {
+              loadAdminData();
+            }
+          }
+        })
+        .withFailureHandler(err => {
+          hideLoading();
+          showToast("Setup gagal: " + err, "error");
+        })
+        .setupDatabase();
+    }
+
+    /**
+     * Memformat string tanggal dari Spreadsheet ISO menjadi format Indonesia yang nyaman dibaca
+     */
+    function formatDateString(dateStr) {
+      if (!dateStr) return "-";
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr; 
+        
+        const pad = (n) => n < 10 ? '0' + n : n;
+        
+        const dStr = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+        const tStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        return `<span class="text-xs text-slate-500 block">${dStr}</span><span class="text-sm font-bold text-slate-800">${tStr}</span>`;
+      } catch (e) {
+        return dateStr;
+      }
+    }
+  </script>
+</body>
+</html>
